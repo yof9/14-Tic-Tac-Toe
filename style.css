@@ -13,7 +13,6 @@ html {
     display: grid;
     grid-template-columns: repeat(3, minmax(50px, 1fr));
     grid-auto-rows: minmax(50px, 1fr);
-    background-color: magenta;
 }
 .btn-move {
     border: black solid 2px;

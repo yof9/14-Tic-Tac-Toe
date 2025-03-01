@@ -41,7 +41,8 @@ const events = (function () {
     events.on("formSubmit", createPlayers);
 
     const playerFactory = (function () {
-        const player = (name, mark) => {return {name, mark}};
+        let playerTag = 0;
+        const player = (name, mark) => {return {name, mark, playerId: ++playerTag}};
         return {player}
     })();
     
@@ -57,48 +58,40 @@ const events = (function () {
     
 })();
 
-(function displayController() {
+(function () {
    
     const domElmts = {};
 
-    // On game initialization add form listener
-    events.on("initGame", cacheDom);
-    events.on("initGame", addFormListener);
+    // On game start remove btn listeners
+    events.on("newGame", addBtnMoveListener);
+    events.on("newGame", addBtnRestartListener);
 
+    // On playermoveregistered mark btn content 
+    events.on("moveRegistered", markbtnMove);
 
-    // On game start remove form listener, add btn listeners
-    events.on("gameStarted", removeFormListener);
-    events.on("gameStarted", addBtnListener);
-
-    // On player move registered mark btn content 
-    events.on("moveRegistered", markBtn);
-
-    // On game over remove btns listener, addForm listener, declareResult, resetGame
-    events.on("gameOver", removeBtnListener);
+    // On game over removebtnMovelistener, declareResult, removebtnRestartlistener, resetBtnMove
+    events.on("gameOver", resetGame);
     events.on("gameOver", declareResult);
-    // events.on("gameOver", resetGame);
 
-    function declareResult ({winBtns, player}) {
-        if (player && winBtns) {
-            alert(`${player.name} has won the game with ${player.moves} moves.`)
-            winBtns.forEach(btn => {btn.classList.add("winner")})
-            console.log(winBtns)
-        }
-        else {
-            alert("draw")
-        }
-    }
+    window.addEventListener("DOMContentLoaded", () => {
+        cacheDom();
+        addFormListener();
+        // displayHistory();
+    });
+
+    // Cache DOM
     function cacheDom() {
     
         // Cache form elmts
         domElmts.playersForm = document.querySelector("form#players");
         domElmts.player1Input = domElmts.playersForm.querySelector("input#player1");
         domElmts.player2Input = domElmts.playersForm.querySelector("input#player2");
+        domElmts.btnRestart = domElmts.playersForm.querySelector("button[type='button']");
 
         // Cahe move-btn elmts
         document.querySelectorAll(".btn-move").forEach(btn => {
-            domElmts.btns = domElmts.btns || [];
-            domElmts.btns.push(btn);
+            domElmts.btnMove = domElmts.btnMove || [];
+            domElmts.btnMove.push(btn);
         });
     }
 
@@ -114,26 +107,70 @@ const events = (function () {
         events.emit("formSubmit", {player1Name: domElmts.player1Input.value, player2Name: domElmts.player2Input.value});
     }
 
-    // Btn functions
-    function addBtnListener() {
-        domElmts.btns.forEach(btn => {
-            btn.addEventListener("click", triggerBtnClick);
+    // btnMove functions
+    function addBtnMoveListener() {
+        domElmts.btnMove.forEach(btn => {
+            btn.addEventListener("click", triggerBtnMoveClick);
         });        
     }
-    function removeBtnListener() {
-        domElmts.btns.forEach(btn => {
-            btn.removeEventListener("click", triggerBtnClick);
+    function removeBtnMoveListener() {
+        domElmts.btnMove.forEach(btn => {
+            btn.removeEventListener("click", triggerBtnMoveClick);
         });   
     }
-    function triggerBtnClick(e) {
+    function triggerBtnMoveClick(e) {
         e.preventDefault();
-        events.emit("btnClick", this);
+        events.emit("btnMoveClick", this);
     }
 
-    // Display player MARK
-    function markBtn({btn, player}) {
-        btn.textContent = player.mark;  
+    // btnMove specials
+    function markbtnMove({btn:btnMove, player}) {
+        btnMove.textContent = player.mark;
     }
+    function resetBtnMove() {
+        setTimeout( () => {
+            domElmts.btnMove.forEach(btn => {
+                btn.classList.remove("winner");
+                btn.textContent = "";
+                events.emit("newGame")
+            });     
+        }, 500);
+    }
+
+    // BtnRestart functions
+    function addBtnRestartListener() {
+        domElmts.btnRestart.addEventListener("click", triggerBtnRestartClick);
+    }
+    function removeBtnRestartListener() {
+        domElmts.btnRestart.removeEventListener("click", triggerBtnRestartClick);
+    }
+    function triggerBtnRestartClick(e) {
+        e.preventDefault();
+        events.emit("btnRestartClick");
+        resetGame();
+    }
+    function resetGame() {
+        removeBtnRestartListener();       
+        removeBtnMoveListener();
+        resetBtnMove();
+    }
+
+    // Display result
+    function declareResult ({resultBtns, player}) {
+        console.log(resultBtns, player)
+        if (player && resultBtns) {
+            resultBtns.forEach(btn => {btn.classList.add("winner")})
+            setTimeout(() => {
+                alert(`${player.name} has won the game with ${player.moves} moves.`);
+            }, 300);
+        }
+        else {
+            setTimeout(() => {
+                alert("draw");
+            }, 300);
+        }
+    }
+    
 })();
 
 const gameFlowController = (function () {
@@ -141,37 +178,55 @@ const gameFlowController = (function () {
     const gameData = {};
 
     events.on("playersCreated", registerPlayers);
-    events.on("btnClick", registerMove);
+    events.on("btnMoveClick", registerMove);
+    events.on("btnRestartClick", resetGame);
+    events.on("newGame", resetGame);
     
     function initGame() {
-        events.emit("initGame");
+        
     }
     function registerPlayers({player1, player2}) {
-        console.log(player1,player2)
-
         gameData.player1 = player1;
         gameData.player2 = player2;
         gameData.currentPlayer = player1;
-        events.emit("gameStarted");
+        events.emit("newGame");
     }
     function registerMove(btn) {
         if (!btn.dataset.mark) {
             events.emit("moveRegistered", {btn, player: gameData.currentPlayer});
-            cachePosition(btn);
+            updatePositions(btn);
+            updatePlayerMoves(1);
             checkWinner(btn);
         }    
     }
-    function cachePosition(btn) {
-        gameData.currentPlayer[btn.id] = btn;
-        gameData.currentPlayer.moves = gameData.currentPlayer?.moves ? ++gameData.currentPlayer.moves : 1;
+    function updatePlayerMoves(by) {
+        if (by) {
+            gameData.currentPlayer.moves = gameData.currentPlayer?.moves || 0;
+            gameData.currentPlayer.moves += by;
+        }
+        else {
+            delete gameData?.player1?.moves; 
+            delete gameData?.player2?.moves;        
+        }
+    }
+    function updatePositions(btn) {
+        if (btn) {
+            gameData.currentPlayer.positions = gameData.currentPlayer.positions || {};
+            gameData.currentPlayer.positions[btn.id] = btn;
+        }
+        else {
+            delete gameData?.player1?.positions; 
+            delete gameData?.player2?.positions;
+        }
     }
     function checkWinner(btn) {
         
         const [row, col] = btn.id.split("-").map(coordinateVal => parseInt(coordinateVal.at(-1)));
-        
-        for (let result of checkResult(row, col)) { 
-            if (result.filter(btn => btn !== undefined).length === 3 ) {
-                events.emit("gameOver", {winBtns: result, player: gameData.currentPlayer});
+
+        for (let resultBtns of checkResult(row, col)) { 
+            if (resultBtns.filter(btn => btn !== undefined).length === 3 ) {
+                events.emit("gameOver", {resultBtns, player: gameData.currentPlayer});
+                saveHistory(resultBtns);
                 return;
             }
         }
@@ -221,16 +276,30 @@ const gameFlowController = (function () {
         return [vertical, horizontal, diagLeft, diagRight];
     }
     function check (row, col) {
-        return gameData.currentPlayer[`row${row}-col${col}`];
+        return gameData.currentPlayer.positions[`row${row}-col${col}`];
     }
     function changePlayerTurn(){
         gameData.currentPlayer = gameData.currentPlayer === gameData.player1 ? 
                 gameData.player2 : gameData.player1;
     }
+    function saveHistory(winBtns){
+    let identifier = gameData.currentPlayer.name + "-" + gameData.currentPlayer.playerId;
+       gameData.history = gameData.history || {};
+       gameData.history[identifier] = gameData.history[identifier] || [];
+       gameData.history[identifier].push([gameData.currentPlayer.moves, winBtns]);
+       console.log(gameData.history)
+    }
+    function resetGame() {
+        updatePositions();
+        updatePlayerMoves();
+    }
 
     return {initGame}
 })();
 
-window.addEventListener("DOMContentLoaded", () => {
-    gameFlowController.initGame();
-});
+
+
+//add computer player
+// add option to let players turn announcement using name
+// add difficulty level for computer player
+// css
