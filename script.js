@@ -42,15 +42,23 @@ const events = (function () {
 
     const playerFactory = (function () {
         let playerTag = 0;
-        const player = (name, mark) => {return {name, mark, playerId: ++playerTag}};
+        const player = (name) => {
+            return {
+                name: name ? name : "Computer", 
+                playerId: name ? ++playerTag : 0, 
+                mark: playerTag % 2 === 0 ? "O" : "X"
+            }
+        };
         return {player}
     })();
     
     function createPlayers({player1Name, player2Name}) {
 
         // Create players
-        const player1 = playerFactory.player(player1Name, "X");
-        const player2 = playerFactory.player(player2Name, "O");
+        if (player1Name || player2Name) {
+            const player1 = playerFactory.player(player1Name);
+            const player2 = playerFactory.player(player2Name);    
+        }
 
         // send players
         events.emit("playersCreated", {player1, player2});
@@ -58,19 +66,20 @@ const events = (function () {
     
 })();
 
-(function () {
+const gameDisplayController = (function () {
    
     const domElmts = {};
 
     // On game start remove btn listeners
-    events.on("newGame", addBtnMoveListener);
+    events.on("restartGame", resetBtnMove);
+    events.on("newGame", resetBtnMove);
     events.on("newGame", addBtnRestartListener);
+    events.on("newGame", addBtnMoveListener);
 
-    // On playermoveregistered mark btn content 
-    events.on("moveRegistered", markbtnMove);
 
     // On game over removebtnMovelistener, declareResult, removebtnRestartlistener, resetBtnMove
-    events.on("gameOver", resetGame);
+    events.on("gameOver", removeBtnRestartListener);     
+    events.on("gameOver", removeBtnMoveListener);
     events.on("gameOver", declareResult);
 
     window.addEventListener("DOMContentLoaded", () => {
@@ -90,18 +99,21 @@ const events = (function () {
 
         // Cahe move-btn elmts
         document.querySelectorAll(".btn-move").forEach(btn => {
+            
             domElmts.btnMove = domElmts.btnMove || [];
+            domElmts.grid = domElmts.grid || {};
+
+            domElmts.grid[btn.id] = btn;
             domElmts.btnMove.push(btn);
         });
+        events.emit("gridLoaded");
     }
 
     // Form functions
     function addFormListener () {
         domElmts.playersForm.addEventListener("submit", triggerFormSubmit);
     }
-    function removeFormListener () {
-        domElmts.playersForm.removeEventListener("submit", triggerFormSubmit);
-    }
+
     function triggerFormSubmit (e) {
         e.preventDefault();
         events.emit("formSubmit", {player1Name: domElmts.player1Input.value, player2Name: domElmts.player2Input.value});
@@ -120,20 +132,22 @@ const events = (function () {
     }
     function triggerBtnMoveClick(e) {
         e.preventDefault();
-        events.emit("btnMoveClick", this);
+        if (!this.textContent){
+            markbtnMove(this)
+            events.emit("registerMove", this)
+        }
     }
 
     // btnMove specials
-    function markbtnMove({btn:btnMove, player}) {
-        btnMove.textContent = player.mark;
+    function markbtnMove(btnMove) {
+        btnMove.textContent = gameFlowController.getCurrentMark();
     }
     function resetBtnMove() {
         setTimeout( () => {
             domElmts.btnMove.forEach(btn => {
                 btn.classList.remove("winner");
                 btn.textContent = "";
-                events.emit("newGame")
-            });     
+            });
         }, 500);
     }
 
@@ -146,31 +160,31 @@ const events = (function () {
     }
     function triggerBtnRestartClick(e) {
         e.preventDefault();
-        events.emit("btnRestartClick");
-        resetGame();
-    }
-    function resetGame() {
-        removeBtnRestartListener();       
-        removeBtnMoveListener();
-        resetBtnMove();
+        events.emit("restartGame");
     }
 
     // Display result
-    function declareResult ({resultBtns, player}) {
-        console.log(resultBtns, player)
-        if (player && resultBtns) {
-            resultBtns.forEach(btn => {btn.classList.add("winner")})
+    function declareResult ({winBtns, player}) {
+        if (player && winBtns) {
+            winBtns.forEach(btn => {btn.classList.add("winner")})
             setTimeout(() => {
                 alert(`${player.name} has won the game with ${player.moves} moves.`);
+                events.emit("newGame")
+
             }, 300);
         }
         else {
             setTimeout(() => {
                 alert("draw");
+                events.emit("newGame")
+
             }, 300);
         }
     }
-    
+    function getGrid() {
+        return domElmts.grid;
+    }
+    return {getGrid};
 })();
 
 const gameFlowController = (function () {
@@ -178,26 +192,21 @@ const gameFlowController = (function () {
     const gameData = {};
 
     events.on("playersCreated", registerPlayers);
-    events.on("btnMoveClick", registerMove);
-    events.on("btnRestartClick", resetGame);
+    events.on("registerMove", registerMove);
+
+    events.on("restartGame", resetGame);
     events.on("newGame", resetGame);
     
-    function initGame() {
-        
-    }
     function registerPlayers({player1, player2}) {
         gameData.player1 = player1;
         gameData.player2 = player2;
-        gameData.currentPlayer = player1;
+        changePlayerTurn();
         events.emit("newGame");
     }
     function registerMove(btn) {
-        if (!btn.dataset.mark) {
-            events.emit("moveRegistered", {btn, player: gameData.currentPlayer});
-            updatePositions(btn);
-            updatePlayerMoves(1);
-            checkWinner(btn);
-        }    
+        updatePositions(btn);
+        updatePlayerMoves(1);
+        checkWinner(btn);
     }
     function updatePlayerMoves(by) {
         if (by) {
@@ -224,8 +233,8 @@ const gameFlowController = (function () {
         const [row, col] = btn.id.split("-").map(coordinateVal => parseInt(coordinateVal.at(-1)));
 
         for (let resultBtns of checkResult(row, col)) { 
-            if (resultBtns.filter(btn => btn !== undefined).length === 3 ) {
-                events.emit("gameOver", {resultBtns, player: gameData.currentPlayer});
+            if (resultBtns.filter(Boolean).length === 3 ) {
+                events.emit("gameOver", {winBtns: resultBtns, player: gameData.currentPlayer});
                 saveHistory(resultBtns);
                 return;
             }
@@ -281,25 +290,134 @@ const gameFlowController = (function () {
     function changePlayerTurn(){
         gameData.currentPlayer = gameData.currentPlayer === gameData.player1 ? 
                 gameData.player2 : gameData.player1;
+        gameData.watchingPlayer =  gameData.currentPlayer === player1 ? 
+                gameData.player2 : gameData.player1;
+        
+        gameData.currentPlayer.playerId === 0 ? 
+            events.emit("computerTurn", {
+                computer: gameData.currentPlayer, 
+                opponent:gameData.watchingPlayer}) : undefined; 
+
     }
     function saveHistory(winBtns){
     let identifier = gameData.currentPlayer.name + "-" + gameData.currentPlayer.playerId;
        gameData.history = gameData.history || {};
        gameData.history[identifier] = gameData.history[identifier] || [];
        gameData.history[identifier].push([gameData.currentPlayer.moves, winBtns]);
-       console.log(gameData.history)
     }
     function resetGame() {
         updatePositions();
         updatePlayerMoves();
     }
+    function getCurrentMark() {
+        return gameData.currentPlayer.mark;
+    }
+    return {getCurrentMark}
+})();
 
-    return {initGame}
+(function Computer() {
+    const grid = {};
+    const lines = Array.from({length: 8}, () => []);
+
+    events.on("gridLoaded", createGridLines);
+    events.on("computerTurn", makeMove);
+
+    function createGridLines() {
+        function getCell(row, col) {
+            return grid.grid[`row${row}-col${col}`];
+        }
+
+        //Load grid
+        grid.grid = gameDisplayController.getGrid()
+
+        // Create the 8 lines
+        for (let i =1; i < 4; i++) {
+            for (let j = 1; j < 4; j++) {
+                // lines: 0 1 2, horizontal
+                lines.at(i-1).push(getCell(i, j));
+                
+                //lines: 3 4 5, vertical
+                lines.at(i+2).push(getCell(j, i));             
+            }
+
+            // lines: 6, diagonal top-left to bottom-right 
+            lines.at(-2).push(getCell(i, i));
+
+            // lines: 7, diagonal top-right to bottom-left
+            lines.at(-1).push(getCell(4-i, i));
+        }
+    }
+
+    // Make move
+    function makeMove({computer, opponent}) {
+        // Create/reset cell score
+        grid.score = {};
+        grid.computer = computer;
+        grid.opponent = opponent;
+
+        // Score cell
+        scoreCells();
+
+        // Make move
+
+        // Find strongest move value
+        let bestCell = Object.entries(grid.score).toReversed(dictLike => dictLike.at(-1));
+        
+        // Find strongest move valued cells
+        let sameValuedCells = Object.entries(grid.score).filter(dictLike => dictLike.at(-1) === bestCell.at(-1));
+
+        // Choose random move from best cells
+        let randomizedBestCell = sameValuedCells.at(
+            Math.floor(Math.random() * sameValuedCells.length)
+        );
+        myClick(grid.grid[randomizedBestCell.at(0)]);
+    }
+    // Score cells
+    function scoreCells() {
+        lines.forEach(line => {
+            line.forEach((cell, index, array) => {
+                // If empty cell rank strength
+                !cell.textContent ? rankCell(cell, index, array) : undefined;
+            });
+        });
+    }
+    // score Logic
+    function rankCell(cell, index, array) {
+
+        let rest = array.toSpliced(index, 1);
+        grid.score[cell.id] = grid.score[cell.id] || 0;             
+                
+        // Check 2 in a row for computer
+        if (rest.every(restCell => restCell.textContent === grid.computer.mark)) {
+            grid.score[cell.id] += 2000; 
+        } 
+        // Check 2 in a row for opponent
+        else if (rest.every(restCell => restCell.textContent === grid.opponent.mark)) {
+            grid.score[cell.id] += 1000; 
+        } 
+        //Check 1 in line, score higher for middle restCell
+        else if (
+            rest.at(0).textContent && !rest.at(1).textContent ||
+            !rest.at(0).textContent && rest.at(1).textContent
+        ) {
+            grid.score[cell.id] += restCell.id === "row2-col2" ? 500 : 100; 
+        }
+        //Check all empty, and not 1 of cptr and 1 opponent
+        else if (rest.every(restCell => !restCell.textContent)) {
+            grid.score[cell.id] = restCell.id === "row2-col2" ? 15 : 20; 
+        }  
+    }
+    function myClick(elmt) {
+        const clickEvent = new MouseEvent('click', {
+            bubbles: true, 
+            cancelable: true, 
+            view: window  
+        });
+        elmt.dispatchEvent(clickEvent);         
+    }
 })();
 
 
-
-//add computer player
-// add option to let players turn announcement using name
+// add option to let players turn announcement using name or player1: name
 // add difficulty level for computer player
 // css
