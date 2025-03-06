@@ -42,26 +42,20 @@ const events = (function () {
 
     const playerFactory = (function () {
         let playerTag = 0;
-        const player = (name) => {
-            return {
-                name: name ? name : "Computer", 
-                playerId: name ? ++playerTag : 0, 
-                mark: playerTag % 2 === 0 ? "O" : "X"
-            }
+        const player = (name, mark, gameMode) => {
+            
+            return name ? { name, mark, playerId: ++playerTag} : { name: "Computer", mark, playerId: 0, gameMode: gameMode}
         };
         return {player}
     })();
     
-    function createPlayers({player1Name, player2Name}) {
-
+    function createPlayers({player1Name, player2Name, gameMode}) {
         // Create players
         if (player1Name || player2Name) {
-            const player1 = playerFactory.player(player1Name);
-            const player2 = playerFactory.player(player2Name);    
+            const player1 = playerFactory.player(player1Name, "X" , gameMode);
+            const player2 = playerFactory.player(player2Name, "O", gameMode);    
+            events.emit("playersCreated", {player1, player2});
         }
-
-        // send players
-        events.emit("playersCreated", {player1, player2});
     }
     
 })();
@@ -80,7 +74,12 @@ const gameDisplayController = (function () {
     // On game over removebtnMovelistener, declareResult, removebtnRestartlistener, resetBtnMove
     events.on("gameOver", removeBtnRestartListener);     
     events.on("gameOver", removeBtnMoveListener);
-    events.on("gameOver", declareResult);
+    events.on("gameOver", declareResult)
+
+    // on computer turn removebtnmovelistener
+    events.on("computerTurn", removeBtnMoveListener);
+    events.on("computerMove", clickComputerChoice);
+    events.on("computerMove", addBtnMoveListener);
 
     window.addEventListener("DOMContentLoaded", () => {
         cacheDom();
@@ -93,8 +92,10 @@ const gameDisplayController = (function () {
     
         // Cache form elmts
         domElmts.playersForm = document.querySelector("form#players");
+
         domElmts.player1Input = domElmts.playersForm.querySelector("input#player1");
         domElmts.player2Input = domElmts.playersForm.querySelector("input#player2");
+
         domElmts.btnRestart = domElmts.playersForm.querySelector("button[type='button']");
 
         // Cahe move-btn elmts
@@ -116,7 +117,11 @@ const gameDisplayController = (function () {
 
     function triggerFormSubmit (e) {
         e.preventDefault();
-        events.emit("formSubmit", {player1Name: domElmts.player1Input.value, player2Name: domElmts.player2Input.value});
+        events.emit("formSubmit", {
+            player1Name: domElmts.player1Input.value, 
+            player2Name: domElmts.player2Input.value,
+            gameMode:  domElmts.playersForm.querySelector(`input[name='game-mode']:checked`).value
+        });
     }
 
     // btnMove functions
@@ -148,6 +153,7 @@ const gameDisplayController = (function () {
                 btn.classList.remove("winner");
                 btn.textContent = "";
             });
+            events.emit("newGameBtnMoveResetDone")
         }, 500);
     }
 
@@ -177,10 +183,16 @@ const gameDisplayController = (function () {
             setTimeout(() => {
                 alert("draw");
                 events.emit("newGame")
-
             }, 300);
         }
     }
+    function clickComputerChoice(btn) {
+        if (!btn.textContent){
+            markbtnMove(btn)
+            events.emit("registerMove", btn)
+        }
+    }
+
     function getGrid() {
         return domElmts.grid;
     }
@@ -196,11 +208,12 @@ const gameFlowController = (function () {
 
     events.on("restartGame", resetGame);
     events.on("newGame", resetGame);
+    events.on("newGameBtnMoveResetDone", assignPlayerTurn);
+
     
     function registerPlayers({player1, player2}) {
         gameData.player1 = player1;
         gameData.player2 = player2;
-        changePlayerTurn();
         events.emit("newGame");
     }
     function registerMove(btn) {
@@ -234,8 +247,8 @@ const gameFlowController = (function () {
 
         for (let resultBtns of checkResult(row, col)) { 
             if (resultBtns.filter(Boolean).length === 3 ) {
-                events.emit("gameOver", {winBtns: resultBtns, player: gameData.currentPlayer});
                 saveHistory(resultBtns);
+                events.emit("gameOver", {winBtns: resultBtns, player: gameData.currentPlayer});
                 return;
             }
         }
@@ -244,7 +257,7 @@ const gameFlowController = (function () {
             events.emit("gameOver", {});
         }
         else {
-            changePlayerTurn();
+            assignPlayerTurn();
         }
     }
     function checkResult(row, col) {
@@ -287,23 +300,21 @@ const gameFlowController = (function () {
     function check (row, col) {
         return gameData.currentPlayer.positions[`row${row}-col${col}`];
     }
-    function changePlayerTurn(){
+    function assignPlayerTurn(){
         gameData.currentPlayer = gameData.currentPlayer === gameData.player1 ? 
                 gameData.player2 : gameData.player1;
-        gameData.watchingPlayer =  gameData.currentPlayer === player1 ? 
+        gameData.watchingPlayer =  gameData.currentPlayer === gameData.player1 ? 
                 gameData.player2 : gameData.player1;
-        
         gameData.currentPlayer.playerId === 0 ? 
             events.emit("computerTurn", {
                 computer: gameData.currentPlayer, 
                 opponent:gameData.watchingPlayer}) : undefined; 
-
     }
     function saveHistory(winBtns){
-    let identifier = gameData.currentPlayer.name + "-" + gameData.currentPlayer.playerId;
+       let winnerIdentifier = gameData.currentPlayer.name + "-" + gameData.currentPlayer.playerId;
        gameData.history = gameData.history || {};
-       gameData.history[identifier] = gameData.history[identifier] || [];
-       gameData.history[identifier].push([gameData.currentPlayer.moves, winBtns]);
+       gameData.history[winnerIdentifier] = gameData.history[winnerIdentifier] || [];
+       gameData.history[winnerIdentifier].push([gameData.currentPlayer.moves, winBtns, gameData.watchingPlayer.name]);
     }
     function resetGame() {
         updatePositions();
@@ -322,6 +333,7 @@ const gameFlowController = (function () {
     events.on("gridLoaded", createGridLines);
     events.on("computerTurn", makeMove);
 
+    // Create Grid Lines
     function createGridLines() {
         function getCell(row, col) {
             return grid.grid[`row${row}-col${col}`];
@@ -347,7 +359,6 @@ const gameFlowController = (function () {
             lines.at(-1).push(getCell(4-i, i));
         }
     }
-
     // Make move
     function makeMove({computer, opponent}) {
         // Create/reset cell score
@@ -358,19 +369,17 @@ const gameFlowController = (function () {
         // Score cell
         scoreCells();
 
-        // Make move
-
         // Find strongest move value
-        let bestCell = Object.entries(grid.score).toReversed(dictLike => dictLike.at(-1));
-        
+        let bestCell = Object.entries(grid.score).toSorted((dictLike1, dictLike2) => dictLike1.at(-1)- dictLike2.at(-1)).at(-1);
+        console.table("R:",Object.entries(grid.score).toSorted((dictLike1, dictLike2) => dictLike1.at(-1)- dictLike2.at(-1)))
         // Find strongest move valued cells
         let sameValuedCells = Object.entries(grid.score).filter(dictLike => dictLike.at(-1) === bestCell.at(-1));
-
+        
         // Choose random move from best cells
         let randomizedBestCell = sameValuedCells.at(
-            Math.floor(Math.random() * sameValuedCells.length)
+            (Math.floor(Math.random() * sameValuedCells.length))
         );
-        myClick(grid.grid[randomizedBestCell.at(0)]);
+        events.emit("computerMove", grid.grid[randomizedBestCell.at(0)])
     }
     // Score cells
     function scoreCells() {
@@ -394,30 +403,35 @@ const gameFlowController = (function () {
         // Check 2 in a row for opponent
         else if (rest.every(restCell => restCell.textContent === grid.opponent.mark)) {
             grid.score[cell.id] += 1000; 
+        }
+        else if (grid.computer.gameMode === "bignner") {
+            grid.score[cell.id] += 0;
         } 
         //Check 1 in line, score higher for middle restCell
         else if (
             rest.at(0).textContent && !rest.at(1).textContent ||
             !rest.at(0).textContent && rest.at(1).textContent
         ) {
-            grid.score[cell.id] += restCell.id === "row2-col2" ? 500 : 100; 
+                if (cell.id === "row2-col2") {
+                    grid.score[cell.id] +=  grid.computer.gameMode === "expert" && !grid.computer.moves ? 500 : 56;    
+                }
+                else {
+                    grid.score[cell.id] += grid.computer.gameMode === "expert" && !grid.computer.moves && 
+                        (rest.at(0).id === "row2-col2" || rest.at(1).id === "row2-col2") ? 90 : 100;
+                }   
+
         }
         //Check all empty, and not 1 of cptr and 1 opponent
         else if (rest.every(restCell => !restCell.textContent)) {
-            grid.score[cell.id] = restCell.id === "row2-col2" ? 15 : 20; 
+            grid.score[cell.id] += cell.id === "row2-col2" ? 14 : 20; 
         }  
-    }
-    function myClick(elmt) {
-        const clickEvent = new MouseEvent('click', {
-            bubbles: true, 
-            cancelable: true, 
-            view: window  
-        });
-        elmt.dispatchEvent(clickEvent);         
     }
 })();
 
-
+//grid.Gamemode = "Expert"; input select
+//history display
 // add option to let players turn announcement using name or player1: name
+
 // add difficulty level for computer player
 // css
+const c = console.log;

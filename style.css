@@ -2,25 +2,182 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+    /* outline: 1px solid red; */
 }
 body,
 html {
     width: 100%;
     height: 100%;
 }
+:root {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    --clr-dark: rgb(0 0 0);
+    --clr-light: rgb(255 255 255);
+    --clr-success: rgb(0, 128, 0);
+    --fsr: 1rem;
+    --fse: .8em;
+}
+body {
+    position: relative;
+}
+main {
+    top: 50%;
+    left: 50%;
+    position:absolute;
+    transform: translate(-50%, -50%);
+    width: max-content;
+    border: 1px solid var(--clr-dark, rgb(0 0 0));
 
+}
+
+fieldset {
+    border: none;
+    * {
+        flex: 1;
+    }
+}
+
+form input[type="radio"] {
+    display: none;
+}
+
+form .name-wrapper input[type="text"] {
+    padding-inline: calc(.5 * var(--fse, 1em));
+    border: none;
+    background-color: color-mix(in hsl, var(--clr-dark, rgb(0 0 0)) 5%, var(--clr-light));
+}
+form .name-wrapper input:focus {
+    outline: none;
+    box-shadow: calc(.25 * var(--fse, 1em)) 0 calc(.5 * var(--fse, 1em)) 0 var(--clr-dark, rgb(0 0 0));
+}
+
+form,
+form .name-wrapper input {
+    padding: calc(.125 * var(--fse, 1em));
+}
+form,
+form .name-wrapper {
+    flex-direction: column;
+}
+main,
+form .name-wrapper input,
+input[type="radio"] + label,
+.btn-wrapper .btn {
+    border-radius: calc(1.5 * var(--fse, 1em));
+}
+
+form, 
+fieldset {
+    display: flex;
+    gap: calc(.75 * var(--fse, 1em));
+}
+.radio-wrapper {
+    gap: calc(.5 * var(--fse, 1em));
+}
 .gameboard {
     display: grid;
-    grid-template-columns: repeat(3, minmax(50px, 1fr));
-    grid-auto-rows: minmax(50px, 1fr);
+    grid-template-columns: repeat(3, minmax(calc(2.2 * var(--fsr, 1rem)), 1fr));
+    grid-auto-rows: calc(2.2 * var(--fsr, 1rem));
+    justify-content: center;
+    align-content: center;
 }
-.btn-move {
-    border: black solid 2px;
+
+.btn.btn-move {
+    font-size: calc(1.5 * var(--fsr, 1rem));
+    background-color: rgb(255 255 255);
+    border: .5px solid;
 }
-.btn-move::before{
-    content:attr(data-mark);
-}
+
 .btn.btn-move.winner {
-    color: green;
-    font-size: 1.5rem;
+    color: var(--clr-success, rgb(0 128 0));
+    font-size: calc(2.2 * var(--fsr, 1rem));
+}
+
+input[type="radio"] + label,
+.btn-wrapper .btn {
+    font-size: .75em;
+    padding: .5em .125em;
+}
+.btn-wrapper .btn {
+    border: none;
+}
+input[type="radio"] + label,
+.btn-wrapper .btn {
+    background-color: color-mix(in srgb, var(--clr-light, rgb(255 255 255)) 70%, var(--clr-dark, rgb(0 0 0))); 
+    color: var(--clr-dark, rgb(0 0 0));
+    text-align: center;
+}
+input[type="radio"]:hover + label,
+.btn-wrapper .btn:hover {
+    background-color: color-mix(in srgb, var(--clr-dark, rgb(0 0 0)) 40%, var(--clr-light));
+}
+input[type="radio"]:checked + label{
+    background-color: var(--clr-dark, rgb(0 0 0));
+    color: color-mix(in srgb, var(--clr-dark, rgb(0 0 0)) 5%, var(--clr-light));
+
+}
+
+main {
+    display: grid;
+    grid-template-areas: 
+        "form      "
+        "gameboard "
+        "history   ";
+    ;
+    gap: calc(1 * var(--fse, 1em));
+    padding:calc(1 * var(--fse, 1em)) calc(.125 * var(--fse, 1em));
+    margin: calc(1 * var(--fse, 1em)) calc(.125 * var(--fse, 1em));
+}
+.form-container {
+    grid-area: form;
+}
+.gameboard {
+    grid-area: gameboard;
+}
+.history-container {
+    grid-area: history;
+}
+@media only screen and (min-width:600px)  { 
+    :root{
+        --fsr: 2rem;
+        --fse: 1.5em;
+    }
+    main {
+        grid-template-areas: 
+        "gameboard  form"
+        "gameboard  history";
+
+    }
+    input[type="radio"] + label,
+    .btn-wrapper .btn {
+        font-size: 1em;
+        padding: .5em 1em;
+    }
+ }
+@media only screen and (min-width:992px)  { 
+    :root{
+        --fsr: 3rem;
+        --fse: 2em;
+    }
+    main {
+        grid-template-areas: 
+        "form   gameboard    history"
+        "form   gameboard    history";
+    }
+    .btn-wrapper .btn {
+        font-size: 1.2em;
+        padding: .75em 1.25em;
+    }
+}
+.btn.btn-move[id *="col1"] {
+    border-left-color: transparent; 
+}
+.btn.btn-move[id *="row1"] {
+    border-top-color: transparent; 
+}
+.btn.btn-move[id *="col3"] {
+    border-right-color: transparent; 
+}
+.btn.btn-move[id *="row3"] {
+    border-bottom-color: transparent; 
 }
