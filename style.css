@@ -175,7 +175,7 @@ input[type="radio"]:checked + label{
     grid-template-columns: repeat(auto-fit, minmax(calc(12 * var(--fse, 1em)), 1fr));
     grid-auto-rows: calc(7 * var(--fse, 1em));
     gap: calc(.5 * var(--fse, 1em));
-    justify-items: start;
+    justify-items: center;
 
     margin-bottom: calc(.5 * var(--fse, 1em));
     padding: calc(.5 * var(--fse, 1em));
@@ -244,8 +244,6 @@ main {
         "gameboard"
         "history";
     align-items: center;
-    justify-items: center;
-
 }
 
 /* small screen */
