@@ -36,7 +36,361 @@ const events = (function () {
     return({on, off, emit});
 })();
 
-(function () {
+const historyCardFactory = (function () {
+    function create (currentPlayer, opposingPlayer, winBtns, gameboardGrid) {
+        
+        const historyMessage =  `<div class="history info">
+                                    <span class="name">${currentPlayer.name}</span> with ${currentPlayer.moves} moves <em>${winBtns ? "wins" : "draws"}</em> 
+                                    against <span class="name">${opposingPlayer.name}</span> with ${opposingPlayer.moves} moves.
+                                </div>
+                                <div class="history gameboard">
+                                    ${gameboardGrid}
+                                </div>`;
+        
+        
+        const historyCard = document.createElement("div");
+        historyCard.className = "history card";
+        historyCard.innerHTML = historyMessage;
+
+        return historyCard;
+    }
+    return {create}
+})();
+
+const gameDisplayController = (function () {
+   
+    const domElmts = {};
+    
+    // When player turn changes
+    events.on("turnChange", updateCurrentTurn);
+    
+    // Game ended and result is being declared
+    events.on("gameOver", removeBtnListeners);
+    
+    // remove listeners, new form submitted and grid being reset,
+    // Reset grid, incase new game started, in a middle of game, 
+    // and prepare turn display
+    events.on("playersCreated", removeBtnListeners);
+    events.on("playersCreated", resetBtnGrid);
+    events.on("playersCreated", prepareTurnDisplay);
+
+    // Computer equivalent for triggerBtnGridClick
+    events.on("computerMove", triggerBtnGridClick);
+
+    // Update history display with result
+    events.on("gameOver", declareResult);
+
+    window.addEventListener("DOMContentLoaded", () => {
+        cacheDom();
+        addFormListener();
+
+        // Initiate First Game with computer player and default player("Jane Doe")
+        let clickEvent = new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            client: window
+        });   
+        domElmts.playersForm.querySelector(".btn[type='submit']").dispatchEvent(clickEvent);
+        
+    });
+
+    // Cache DOM
+    function cacheDom() {
+        
+        // Cache current player display
+        domElmts.currentPlayerName = document.querySelector(".current-player .name");
+        domElmts.currentPlayerMark = document.querySelector(".current-player .mark");
+        
+        // Cache form elmts
+        domElmts.playersForm = document.querySelector("form#players");
+
+        domElmts.player1Input = domElmts.playersForm.querySelector("input#player1");
+        domElmts.player2Input = domElmts.playersForm.querySelector("input#player2");
+
+        domElmts.btnRestart = domElmts.playersForm.querySelector("button[type='button']");
+
+        // Cache gameboard elmts
+        domElmts.gameboard = {gameboard: null, gridBtns: {}};      // Prepare object for caching gameboard and gameboard btns
+        domElmts.gameboard.gameboard = document.querySelector(".gameboard");         // Cache gameboard
+        domElmts.gameboard.gameboard.querySelectorAll(".btn-move").forEach(btn => {         // Cache gameboard btns
+            domElmts.gameboard.gridBtns[btn.dataset.cell] = btn;
+        });
+
+        // Cahe history elmt
+        domElmts.historyContainer = document.querySelector(".history-container");
+
+        events.emit("gridBtnsLoaded", domElmts.gameboard.gridBtns);
+    }
+
+    // Form functions
+    function addFormListener () {
+        domElmts.playersForm.addEventListener("submit", triggerFormSubmit);
+    }
+    function triggerFormSubmit (e) {
+        e.preventDefault();
+        events.emit("formSubmit", {
+            player1Name: domElmts.player1Input.value, 
+            player2Name: domElmts.player2Input.value,
+            gameMode:  domElmts.playersForm.querySelector(`input[name='game-mode']:checked`).value
+        });
+    }
+
+    // Turn functions
+    function prepareTurnDisplay({player1, player2}) {
+        domElmts.turnDisplay = {};
+        domElmts[`player-${player1.playerId}`] = document.querySelector(".turn-display-container .player-1");
+        domElmts[`player-${player2.playerId}`] = document.querySelector(".turn-display-container .player-2");
+        
+        domElmts[`player-${player1.playerId}`].querySelector(".name").textContent = player1.name;
+        domElmts[`player-${player1.playerId}`].querySelector(".mark").textContent = player1.mark;
+        
+        domElmts[`player-${player2.playerId}`].querySelector(".name").textContent = player2.name;
+        domElmts[`player-${player2.playerId}`].querySelector(".mark").textContent = player2.mark;
+    }
+    function updateCurrentTurn({currentPlayer, opposingPlayer}) {
+
+        // Cache player for markingboard
+        domElmts.currentPlayer = currentPlayer;
+
+        // Update display
+        domElmts[`player-${currentPlayer.playerId}`].id = "active";
+        domElmts[`player-${opposingPlayer.playerId}`].id = "";
+
+        // Remove Btn listener if computer's turn, add them if players turn 
+        currentPlayer.playerId === 0 ? removeBtnListeners() : addBtnListeners();        
+    }
+    
+    // General btn functions, adapters
+    function addBtnListeners() {
+        if (domElmts.btnListeners) return;
+        
+        addBtnRestartListener();
+        addBtnGridListener();
+
+        // Set flag false
+        domElmts.btnListeners = true;
+    }
+    function removeBtnListeners () {
+        if (!domElmts.btnListeners) return;
+        
+        removeBtnRestartListener();   
+        removeBtnGridListener();
+
+        // Set flag to false
+        domElmts.btnListeners = false;
+    }
+
+    // btnGrid functions
+    function addBtnGridListener() {
+        domElmts.gameboard.gameboard.addEventListener("click", triggerBtnGridClick);     
+    }
+    function removeBtnGridListener() {
+        domElmts.gameboard.gameboard.removeEventListener("click", triggerBtnGridClick);
+    }
+    function triggerBtnGridClick(btn) {
+        // if event, stop propagation and assign event target as btn
+        if (btn.target) {
+            btn.stopPropagation();
+            btn = btn.target;
+        }
+        if (!btn.textContent){
+            markbtnMove(btn);
+            events.emit("registerMove", btn);
+            btn.dataset.checked = true;
+        }
+    }
+    function markbtnMove(btnGrid) {
+        btnGrid.textContent = domElmts.currentPlayer.mark;
+    }
+    function resetBtnGrid() {
+        setTimeout(() => {
+            Object.values(domElmts.gameboard.gridBtns).forEach(btn => {
+                btn.classList.remove("winner");
+                btn.dataset.checked="";
+                btn.textContent = "";
+            });
+            events.emit("gridReset")
+        }, 1000);
+    }
+
+    // BtnRestart functions
+    function addBtnRestartListener() {
+        domElmts.btnRestart.addEventListener("click", triggerBtnRestartClick);
+    }
+    function removeBtnRestartListener() {
+        domElmts.btnRestart.removeEventListener("click", triggerBtnRestartClick);
+    }
+    function triggerBtnRestartClick(e) {
+        e.preventDefault();
+        removeBtnListeners();
+        resetBtnGrid();
+    }
+
+    // Show result
+    function declareResult ({currentPlayer, opposingPlayer, winBtns}) {
+    
+        // Style btns
+        if (winBtns) winBtns.forEach(winBtn => {winBtn.classList.add("winner")});
+
+        // Create History div
+        const historyCard = historyCardFactory.create(currentPlayer, opposingPlayer, winBtns, domElmts.gameboard.gameboard.innerHTML);
+        
+        // update history Display
+        updateHistoryDisplay(currentPlayer, historyCard);
+        
+        // Reset grid   
+        resetBtnGrid();
+    }
+    function updateHistoryDisplay(player, historyCard) {
+        let playerIdentifier = "player" + player.name.split(" ").join("_") + "-" + player.playerId;
+        let historyWrapper = domElmts.historyContainer.querySelector(`.history.wrapper.${playerIdentifier}`);
+
+        // If exist remove , else create prepend with card as first child
+        if (historyWrapper) {
+            domElmts.historyContainer.removeChild(historyWrapper);
+            historyWrapper.prepend(historyCard);
+        }
+        else {
+            historyWrapper = document.createElement("div");
+            historyWrapper.className = `history wrapper ${playerIdentifier}`;
+            historyWrapper.append(historyCard);
+        }
+
+        // Prepend wrapper
+        domElmts.historyContainer.prepend(historyWrapper);
+    }
+
+})();
+
+const gameFlowController = (function () {
+    
+    const gameData = {};
+
+    events.on("gridReset", startNewGame);
+    events.on("playersCreated", registerPlayers);
+    events.on("registerMove", registerMove);
+
+    function startNewGame() {
+        resetGame();
+        assignPlayerTurn();
+    }
+
+    // Create players
+    function registerPlayers({player1, player2}) {
+        gameData.player1 = player1;
+        gameData.player2 = player2;
+    }
+
+    // Game Flow operation
+    function registerMove(btn) {
+        updatePositions(btn);
+        updatePlayerMoves(1);
+        checkResult(btn);
+    }
+  
+    // Helper funs for registering move
+    function updatePlayerMoves(by) {
+        by = by ?? 0;
+        if (by) {
+            gameData.currentPlayer.moves = gameData.currentPlayer?.moves || 0;
+            gameData.currentPlayer.moves += by;
+        }
+        else {
+            delete gameData?.player1?.moves; 
+            delete gameData?.player2?.moves;        
+        }
+    }
+    function updatePositions(btn) {
+        if (btn) {
+            gameData.currentPlayer.positions = gameData.currentPlayer.positions || {};
+            gameData.currentPlayer.positions[btn.dataset.cell] = btn;
+        }
+        else {
+            delete gameData.player1?.positions; 
+            delete gameData.player2?.positions;
+        }
+    }
+    function checkResult(btn) {
+        
+        const [row, col] = btn.dataset.cell.split("-").map(coordinateVal => parseInt(coordinateVal.at(-1)));
+
+        for (let resultBtns of checkCellLines(row, col)) { 
+            if (resultBtns.filter(Boolean).length === 3 ) {
+                events.emit("gameOver", {currentPlayer: gameData.currentPlayer, opposingPlayer: gameData.opposingPlayer, winBtns: resultBtns});
+                return;
+            }
+        }
+
+        if (gameData.player1.moves + gameData.player2.moves === 9) {
+            events.emit("gameOver", {currentPlayer: gameData.currentPlayer, opposingPlayer: gameData.opposingPlayer});
+        }
+        else {
+            assignPlayerTurn();
+        }
+    }
+  
+    // Helper funs for checking result 
+    function checkCellLines(row, col) {
+        
+        let vertical = [], 
+            horizontal = [],
+            diagLeft = [], 
+            diagRight =[];
+
+        for (let i = 1; i < 4; i++) {
+            // Check vertical
+            vertical.push(checkCell(i, col)); 
+
+            // Check horizontal
+            horizontal.push(checkCell(row, i)); 
+
+            // If middle point, check both diagonals
+            if (row === col && row === 2) {
+
+                // Check top-left to bottom-right diagonal
+                diagLeft.push(checkCell(i, i));
+                
+                // Check top-right to bottom-left diagonal
+                diagRight.push(checkCell(i, 4-i));
+            }
+            // 
+            else if (row === col) {
+
+                // Check top-left to bottom-right diagonal
+                diagLeft.push(checkCell(i, i));
+            }
+            else if (Math.abs(row-col) === 2) {
+
+                // Check top-right to bottom-left diagonal
+                diagRight.push(checkCell(i, 4-i));                
+            }
+        }
+        return [vertical, horizontal, diagLeft, diagRight];
+    }
+    function checkCell(row, col) {
+        return gameData.currentPlayer.positions[`row${row}-col${col}`];
+    }
+    function assignPlayerTurn(){
+        gameData.currentPlayer = gameData.currentPlayer === gameData.player1 ? 
+                gameData.player2 : gameData.player1;
+        
+        gameData.opposingPlayer =  gameData.currentPlayer === gameData.player1 ? 
+                gameData.player2 : gameData.player1;
+        
+        events.emit("turnChange", {
+            currentPlayer: gameData.currentPlayer, 
+            opposingPlayer: gameData.opposingPlayer
+        });
+    }
+
+    function resetGame() {
+        updatePositions();
+        updatePlayerMoves();
+    }
+
+})();
+
+(function playerFactory() {
 
     events.on("formSubmit", createPlayers);
 
@@ -60,287 +414,21 @@ const events = (function () {
     
 })();
 
-const gameDisplayController = (function () {
-   
-    const domElmts = {};
-
-    // On game start remove btn listeners
-    events.on("restartGame", resetBtnMove);
-    events.on("newGame", resetBtnMove);
-    events.on("newGame", addBtnRestartListener);
-    events.on("newGame", addBtnMoveListener);
-
-
-    // On game over removebtnMovelistener, declareResult, removebtnRestartlistener, resetBtnMove
-    events.on("gameOver", removeBtnRestartListener);     
-    events.on("gameOver", removeBtnMoveListener);
-    events.on("gameOver", declareResult)
-
-    // on computer turn removebtnmovelistener
-    events.on("computerTurn", removeBtnMoveListener);
-    events.on("computerMove", clickComputerChoice);
-    events.on("computerMove", addBtnMoveListener);
-
-    window.addEventListener("DOMContentLoaded", () => {
-        cacheDom();
-        addFormListener();
-        // displayHistory();
-    });
-
-    // Cache DOM
-    function cacheDom() {
-    
-        // Cache form elmts
-        domElmts.playersForm = document.querySelector("form#players");
-
-        domElmts.player1Input = domElmts.playersForm.querySelector("input#player1");
-        domElmts.player2Input = domElmts.playersForm.querySelector("input#player2");
-
-        domElmts.btnRestart = domElmts.playersForm.querySelector("button[type='button']");
-
-        // Cahe move-btn elmts
-        document.querySelectorAll(".btn-move").forEach(btn => {
-            
-            domElmts.btnMove = domElmts.btnMove || [];
-            domElmts.grid = domElmts.grid || {};
-
-            domElmts.grid[btn.id] = btn;
-            domElmts.btnMove.push(btn);
-        });
-        events.emit("gridLoaded");
-    }
-
-    // Form functions
-    function addFormListener () {
-        domElmts.playersForm.addEventListener("submit", triggerFormSubmit);
-    }
-
-    function triggerFormSubmit (e) {
-        e.preventDefault();
-        events.emit("formSubmit", {
-            player1Name: domElmts.player1Input.value, 
-            player2Name: domElmts.player2Input.value,
-            gameMode:  domElmts.playersForm.querySelector(`input[name='game-mode']:checked`).value
-        });
-    }
-
-    // btnMove functions
-    function addBtnMoveListener() {
-        domElmts.btnMove.forEach(btn => {
-            btn.addEventListener("click", triggerBtnMoveClick);
-        });        
-    }
-    function removeBtnMoveListener() {
-        domElmts.btnMove.forEach(btn => {
-            btn.removeEventListener("click", triggerBtnMoveClick);
-        });   
-    }
-    function triggerBtnMoveClick(e) {
-        e.preventDefault();
-        if (!this.textContent){
-            markbtnMove(this)
-            events.emit("registerMove", this)
-        }
-    }
-
-    // btnMove specials
-    function markbtnMove(btnMove) {
-        btnMove.textContent = gameFlowController.getCurrentMark();
-    }
-    function resetBtnMove() {
-        setTimeout( () => {
-            domElmts.btnMove.forEach(btn => {
-                btn.classList.remove("winner");
-                btn.textContent = "";
-            });
-            events.emit("newGameBtnMoveResetDone")
-        }, 500);
-    }
-
-    // BtnRestart functions
-    function addBtnRestartListener() {
-        domElmts.btnRestart.addEventListener("click", triggerBtnRestartClick);
-    }
-    function removeBtnRestartListener() {
-        domElmts.btnRestart.removeEventListener("click", triggerBtnRestartClick);
-    }
-    function triggerBtnRestartClick(e) {
-        e.preventDefault();
-        events.emit("restartGame");
-    }
-
-    // Display result
-    function declareResult ({winBtns, player}) {
-        if (player && winBtns) {
-            winBtns.forEach(btn => {btn.classList.add("winner")})
-            setTimeout(() => {
-                alert(`${player.name} has won the game with ${player.moves} moves.`);
-                events.emit("newGame")
-
-            }, 300);
-        }
-        else {
-            setTimeout(() => {
-                alert("draw");
-                events.emit("newGame")
-            }, 300);
-        }
-    }
-    function clickComputerChoice(btn) {
-        if (!btn.textContent){
-            markbtnMove(btn)
-            events.emit("registerMove", btn)
-        }
-    }
-
-    function getGrid() {
-        return domElmts.grid;
-    }
-    return {getGrid};
-})();
-
-const gameFlowController = (function () {
-    
-    const gameData = {};
-
-    events.on("playersCreated", registerPlayers);
-    events.on("registerMove", registerMove);
-
-    events.on("restartGame", resetGame);
-    events.on("newGame", resetGame);
-    events.on("newGameBtnMoveResetDone", assignPlayerTurn);
-
-    
-    function registerPlayers({player1, player2}) {
-        gameData.player1 = player1;
-        gameData.player2 = player2;
-        events.emit("newGame");
-    }
-    function registerMove(btn) {
-        updatePositions(btn);
-        updatePlayerMoves(1);
-        checkWinner(btn);
-    }
-    function updatePlayerMoves(by) {
-        if (by) {
-            gameData.currentPlayer.moves = gameData.currentPlayer?.moves || 0;
-            gameData.currentPlayer.moves += by;
-        }
-        else {
-            delete gameData?.player1?.moves; 
-            delete gameData?.player2?.moves;        
-        }
-    }
-    function updatePositions(btn) {
-        if (btn) {
-            gameData.currentPlayer.positions = gameData.currentPlayer.positions || {};
-            gameData.currentPlayer.positions[btn.id] = btn;
-        }
-        else {
-            delete gameData?.player1?.positions; 
-            delete gameData?.player2?.positions;
-        }
-    }
-    function checkWinner(btn) {
-        
-        const [row, col] = btn.id.split("-").map(coordinateVal => parseInt(coordinateVal.at(-1)));
-
-        for (let resultBtns of checkResult(row, col)) { 
-            if (resultBtns.filter(Boolean).length === 3 ) {
-                saveHistory(resultBtns);
-                events.emit("gameOver", {winBtns: resultBtns, player: gameData.currentPlayer});
-                return;
-            }
-        }
-
-        if (gameData.player1.moves + gameData.player2.moves === 9) {
-            events.emit("gameOver", {});
-        }
-        else {
-            assignPlayerTurn();
-        }
-    }
-    function checkResult(row, col) {
-        
-        let vertical = [], 
-            horizontal = [],
-            diagLeft = [], 
-            diagRight =[];
-
-        for (let i = 1; i < 4; i++) {
-            // Check vertical
-            vertical.push(check(i, col)); 
-
-            // Check horizontal
-            horizontal.push(check(row, i)); 
-
-            // If middle point, check both diagonals
-            if (row === col && row === 2) {
-
-                // Check top-left to bottom-right diagonal
-                diagLeft.push(check(i, i));
-                
-                // Check top-right to bottom-left diagonal
-                diagRight.push(check(i, 4-i));
-            }
-            // 
-            else if (row === col) {
-
-                // Check top-left to bottom-right diagonal
-                diagLeft.push(check(i, i));
-            }
-            else if (Math.abs(row-col) === 2) {
-
-                // Check top-right to bottom-left diagonal
-                diagRight.push(check(i, 4-i));                
-            }
-        }
-        return [vertical, horizontal, diagLeft, diagRight];
-    }
-    function check (row, col) {
-        return gameData.currentPlayer.positions[`row${row}-col${col}`];
-    }
-    function assignPlayerTurn(){
-        gameData.currentPlayer = gameData.currentPlayer === gameData.player1 ? 
-                gameData.player2 : gameData.player1;
-        gameData.watchingPlayer =  gameData.currentPlayer === gameData.player1 ? 
-                gameData.player2 : gameData.player1;
-        gameData.currentPlayer.playerId === 0 ? 
-            events.emit("computerTurn", {
-                computer: gameData.currentPlayer, 
-                opponent:gameData.watchingPlayer}) : undefined; 
-    }
-    function saveHistory(winBtns){
-       let winnerIdentifier = gameData.currentPlayer.name + "-" + gameData.currentPlayer.playerId;
-       gameData.history = gameData.history || {};
-       gameData.history[winnerIdentifier] = gameData.history[winnerIdentifier] || [];
-       gameData.history[winnerIdentifier].push([gameData.currentPlayer.moves, winBtns, gameData.watchingPlayer.name]);
-    }
-    function resetGame() {
-        updatePositions();
-        updatePlayerMoves();
-    }
-    function getCurrentMark() {
-        return gameData.currentPlayer.mark;
-    }
-    return {getCurrentMark}
-})();
-
 (function Computer() {
     const grid = {};
     const lines = Array.from({length: 8}, () => []);
 
-    events.on("gridLoaded", createGridLines);
-    events.on("computerTurn", makeMove);
+    events.on("gridBtnsLoaded", createGridLines);
+    events.on("turnChange", makeMove);
 
     // Create Grid Lines
-    function createGridLines() {
+    function createGridLines(gridBtns) {
         function getCell(row, col) {
-            return grid.grid[`row${row}-col${col}`];
+            return grid.gridBtns[`row${row}-col${col}`];
         }
 
-        //Load grid
-        grid.grid = gameDisplayController.getGrid()
+        //Load gridBtns
+        grid.gridBtns = gridBtns;
 
         // Create the 8 lines
         for (let i =1; i < 4; i++) {
@@ -360,18 +448,21 @@ const gameFlowController = (function () {
         }
     }
     // Make move
-    function makeMove({computer, opponent}) {
+    function makeMove({currentPlayer, opposingPlayer}) {
+
+        // If not computer's turn return
+        if (currentPlayer.playerId !== 0) return;
+
         // Create/reset cell score
         grid.score = {};
-        grid.computer = computer;
-        grid.opponent = opponent;
+        grid.computer = currentPlayer;
+        grid.opponent = opposingPlayer;
 
         // Score cell
         scoreCells();
 
         // Find strongest move value
         let bestCell = Object.entries(grid.score).toSorted((dictLike1, dictLike2) => dictLike1.at(-1)- dictLike2.at(-1)).at(-1);
-        console.table("R:",Object.entries(grid.score).toSorted((dictLike1, dictLike2) => dictLike1.at(-1)- dictLike2.at(-1)))
         // Find strongest move valued cells
         let sameValuedCells = Object.entries(grid.score).filter(dictLike => dictLike.at(-1) === bestCell.at(-1));
         
@@ -379,7 +470,10 @@ const gameFlowController = (function () {
         let randomizedBestCell = sameValuedCells.at(
             (Math.floor(Math.random() * sameValuedCells.length))
         );
-        events.emit("computerMove", grid.grid[randomizedBestCell.at(0)])
+    
+        setTimeout(() => {
+            events.emit("computerMove", grid.gridBtns[randomizedBestCell.at(0)]);            
+        }, 1000);
     }
     // Score cells
     function scoreCells() {
@@ -394,44 +488,36 @@ const gameFlowController = (function () {
     function rankCell(cell, index, array) {
 
         let rest = array.toSpliced(index, 1);
-        grid.score[cell.id] = grid.score[cell.id] || 0;             
+        grid.score[cell.dataset.cell] = grid.score[cell.dataset.cell] || 0;             
                 
         // Check 2 in a row for computer
         if (rest.every(restCell => restCell.textContent === grid.computer.mark)) {
-            grid.score[cell.id] += 2000; 
+            grid.score[cell.dataset.cell] += 2000; 
         } 
         // Check 2 in a row for opponent
         else if (rest.every(restCell => restCell.textContent === grid.opponent.mark)) {
-            grid.score[cell.id] += 1000; 
+            grid.score[cell.dataset.cell] += 1000; 
         }
         else if (grid.computer.gameMode === "bignner") {
-            grid.score[cell.id] += 0;
+            grid.score[cell.dataset.cell] += 0;
         } 
         //Check 1 in line, score higher for middle restCell
         else if (
             rest.at(0).textContent && !rest.at(1).textContent ||
             !rest.at(0).textContent && rest.at(1).textContent
         ) {
-                if (cell.id === "row2-col2") {
-                    grid.score[cell.id] +=  grid.computer.gameMode === "expert" && !grid.computer.moves ? 500 : 56;    
+                if (cell.dataset.cell === "row2-col2") {
+                    grid.score[cell.dataset.cell] +=  grid.computer.gameMode === "expert" && !grid.computer.moves ? 500 : 56;    
                 }
                 else {
-                    grid.score[cell.id] += grid.computer.gameMode === "expert" && !grid.computer.moves && 
-                        (rest.at(0).id === "row2-col2" || rest.at(1).id === "row2-col2") ? 90 : 100;
+                    grid.score[cell.dataset.cell] += grid.computer.gameMode === "expert" && !grid.computer.moves && 
+                        (rest.at(0).dataset.cell === "row2-col2" || rest.at(1).dataset.cell === "row2-col2") ? 90 : 100;
                 }   
 
         }
         //Check all empty, and not 1 of cptr and 1 opponent
         else if (rest.every(restCell => !restCell.textContent)) {
-            grid.score[cell.id] += cell.id === "row2-col2" ? 14 : 20; 
+            grid.score[cell.dataset.cell] += cell.dataset.cell === "row2-col2" ? 14 : 20; 
         }  
     }
 })();
-
-//grid.Gamemode = "Expert"; input select
-//history display
-// add option to let players turn announcement using name or player1: name
-
-// add difficulty level for computer player
-// css
-const c = console.log;

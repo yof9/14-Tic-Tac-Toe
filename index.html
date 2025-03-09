@@ -11,31 +11,59 @@
     <title>Tic-Tac-Toe</title>
   </head>
   <body>
-    <header></header>
-    <main>
-      <div class="gameboard">
-        <button type="button" class="btn btn-move" id="row1-col1" data-checked=""></button>
-        <button type="button" class="btn btn-move" id="row1-col2" data-checked=""></button>
-        <button type="button" class="btn btn-move" id="row1-col3" data-checked=""></button>
-        
-        <button type="button" class="btn btn-move" id="row2-col1" data-checked=""></button>
-        <button type="button" class="btn btn-move" id="row2-col2" data-checked=""></button>
-        <button type="button" class="btn btn-move" id="row2-col3" data-checked=""></button>
-        
-        <button type="button" class="btn btn-move" id="row3-col1" data-checked=""></button>
-        <button type="button" class="btn btn-move" id="row3-col2" data-checked=""></button>
-        <button type="button" class="btn btn-move" id="row3-col3" data-checked=""></button>
+    <header> 
+      <div class="display turn-display-container">
+        <span class="display player-1">
+          <span class="name"></span>
+          <span class="mark"></span>
+        </span>
+        <span class="display player-2">
+          <span class="name"></span>
+          <span class="mark"></span>
+        </span>
       </div>
-      <div>
+    </header>
+    <main>
+      <div class="form-container">
         <form action="#" id="players">
-          <label for="player1">Name:</label>
-          <input type="text" id="player1" placeholder="Enter player1's Name">
-          <label for="player2">Name:</label>
-          <input type="text" id="player2" placeholder="Enter player2's Name">
-          <button type="submit">New Game</button>
-          <button type="button">Restart</button>
+          <fieldset class="radio-wrapper">
+            <input type="radio" name="game-mode" value="bignner" id="bignner">
+            <label for="bignner">Bignner</label>
+            <input type="radio" name="game-mode" value="intermidiate" id="intermidiate">
+            <label for="intermidiate">Intermidiate</label>            
+            <input type="radio" name="game-mode" value="expert" id="expert" checked>
+            <label for="expert">Expert</label>
+          </fieldset>
+          <fieldset class="name-wrapper">
+            <div>
+              <label for="player1">Player 1:</label>
+              <input type="text" id="player1" maxlength="11" placeholder="Name: John Doe">
+            </div>
+            <div>
+              <label for="player2">Player 2:</label>
+              <input type="text" id="player2" maxlength="11" placeholder="Name: Jane Doe" value="Jane Doe">
+            </div>
+          </fieldset>
+          <fieldset class="btn-wrapper">
+            <button type="submit" class="btn">New Game</button>
+            <button type="button" class="btn">Restart</button>
+          </fieldset>
         </form>    
       </div>
+      <div class="gameboard">
+        <button type="button" class="btn btn-move" data-cell="row1-col1" data-checked="false"></button>
+        <button type="button" class="btn btn-move" data-cell="row1-col2" data-checked="false"></button>
+        <button type="button" class="btn btn-move" data-cell="row1-col3" data-checked="false"></button>
+        
+        <button type="button" class="btn btn-move" data-cell="row2-col1" data-checked="false"></button>
+        <button type="button" class="btn btn-move" data-cell="row2-col2" data-checked="false"></button>
+        <button type="button" class="btn btn-move" data-cell="row2-col3" data-checked="false"></button>
+        
+        <button type="button" class="btn btn-move" data-cell="row3-col1" data-checked="false"></button>
+        <button type="button" class="btn btn-move" data-cell="row3-col2" data-checked="false"></button>
+        <button type="button" class="btn btn-move" data-cell="row3-col3" data-checked="false"></button>
+      </div>
+      <div class="history-container"></div>
     </main>
   </body>
 </html>
