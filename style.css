@@ -244,6 +244,7 @@ main {
         "gameboard"
         "history";
     align-items: center;
+    justify-items: center;
 
 }
 
